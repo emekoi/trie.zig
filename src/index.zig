@@ -5,31 +5,99 @@
 //
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
-pub fn Trie(comptime T: type, comptime alphabet: comptime_int) type {
+fn nextPowerOf2(x: usize) usize {
+    if (x == 0) return 1;
+    var result = x -% 1;
+    result = switch (@sizeOf(usize)) {
+        8 => result | (result >> 32),
+        4 => result | (result >> 16),
+        2 => result | (result >> 8),
+        1 => result | (result >> 4),
+        else => 0,
+    };
+    result |= (result >> 4);
+    result |= (result >> 2);
+    result |= (result >> 1);
+    return result +% (1 + @boolToInt(x <= 0));
+}
+
+pub fn Trie(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        pub const Node = struct {
-            children: [alphabet]?Node,
-            data: ?T
+        const Node = struct {
+            allocator: *Allocator,
+            children: []?Node,
+            data: ?T,
+
+            fn new(allocator: *Allocator) Node {
+                return Node {
+                    .allocator = allocator,
+                    .children = undefined,
+                    .data = null,
+                };
+            }
+
+            fn get(self: *Node, idx: usize) !*Node {
+                if (idx > self.children.len) {
+                    const new_size = nextPowerOf2(self.children.len + 1);
+                    try self.allocator.realloc(Node, self.children, new_size);
+                }
+                return &self.children[idx];
+            }
+
+            fn getOrNull(self: Node, idx: usize) ?*const Node {
+                if (idx > self.children.len) {
+                    return null;
+                }
+                return &self.children[idx];
+                return null;
+            }
         };
 
         root: Node,
 
-        pub fn init() Self {
+        pub fn init(allocator: *Allocator) Self {
             return Self {
-                .root = Node {
-                    .data = null,
-                    .children = []?Node { null } ** alphabet,
-                },
+                .root = Node.new(allocator),
             };
+        }
+
+        pub fn put(self: *Self, key: []const u8, value: T) !void {
+            var node = &self.root;
+            for (key) |c| {
+                node = try node.get(@intCast(usize, c));
+            }
+            node.*.data = value;
+        }
+
+        pub fn get(self: Self, key: []const u8) ?T {
+            var node = &self.root;
+            for (key) |c| {
+                node = node.getOrNull(@intCast(usize, c)) orelse {
+                    return null;
+                };
+            }
+            return node.*.data;
         }
     };
 }
 
-test "Trie" {
-    comptime {
-        var trie = Trie(u8, 26);
+test "StaticTrie" {
+    var trie = Trie([]const u8).init(std.debug.global_allocator);
+    const words = [][]const u8 {
+        "peter",   "piper",
+        "picked",  "peck",
+        "pickled", "peppers"
+    };
+
+    for (words) |word| {
+        try trie.put(word, word);
+    }
+
+    for (words) |word| {
+        std.debug.warn("{}\n", trie.get(word));
     }
 }
