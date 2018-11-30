@@ -5,7 +5,10 @@
 //
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
+const mem = std.mem;
+const Compare = mem.Compare;
+const Allocator = mem.Allocator;
+const ArrayList = std.ArrayList;
 
 fn nextPowerOf2(x: usize) usize {
     if (x == 0) return 1;
@@ -29,58 +32,45 @@ pub fn Trie(comptime T: type) type {
 
         const Node = struct {
             allocator: *Allocator,
-            children: []?Node,
+            prefix: ?[]const u8,
+            children: []*Node,
             data: ?T,
 
-            fn new(allocator: *Allocator) Node {
+            fn new(allocator: *Allocator, prefix: ?[]const u8) Node {
                 return Node {
                     .allocator = allocator,
                     .children = undefined,
+                    .prefix = prefix,
                     .data = null,
                 };
             }
 
-            fn get(self: *Node, idx: usize) !*Node {
-                if (idx > self.children.len) {
-                    const new_size = nextPowerOf2(self.children.len + 1);
-                    try self.allocator.realloc(Node, self.children, new_size);
-                }
-                return &self.children[idx];
-            }
-
-            fn getOrNull(self: Node, idx: usize) ?*const Node {
-                if (idx > self.children.len) {
-                    return null;
-                }
-                return &self.children[idx];
-                return null;
+            fn add(self: *Node, node: *Node) !void {
+                const new_size = self.children.len + 1;
+                self.children = try self.allocator.realloc(*Node, self.children, new_size);
+                self.children[new_size - 1] = node;
             }
         };
 
+        nodes: ArrayList(Node),
         root: Node,
 
         pub fn init(allocator: *Allocator) Self {
             return Self {
-                .root = Node.new(allocator),
+                .nodes = ArrayList(Node).init(allocator),
+                .root = Node.new(allocator, null),
             };
         }
 
-        pub fn put(self: *Self, key: []const u8, value: T) !void {
-            var node = &self.root;
-            for (key) |c| {
-                node = try node.get(@intCast(usize, c));
-            }
-            node.*.data = value;
+        pub fn insert(self: *Self, key: []const u8, value: T) !void {
+            var nodes = &self.root.children;
+            // Compare.GreaterThan -- create new node, append node
+            // Compare.Equal -- do nothing? (update value)
+            // Compare.LessThan -- split node
         }
 
         pub fn get(self: Self, key: []const u8) ?T {
-            var node = &self.root;
-            for (key) |c| {
-                node = node.getOrNull(@intCast(usize, c)) orelse {
-                    return null;
-                };
-            }
-            return node.*.data;
+            return null;
         }
     };
 }
